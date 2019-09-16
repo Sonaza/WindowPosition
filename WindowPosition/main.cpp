@@ -3,8 +3,6 @@
 #pragma comment(lib, "psapi.lib")
 
 #include <string>
-#include <thread>
-#include <chrono>
 #include <cstdio>
 
 std::string getLastErrorAsString()
@@ -112,9 +110,7 @@ HWND findWindowFromProcessName(const std::string &processName)
 int main()
 {
 	std::string processToSave = "Spotify.exe";
-
 	HWND windowToSave = findWindowFromProcessName(processToSave);
-
 	resizeWindow(windowToSave, 1120);
 
 	return 0;
