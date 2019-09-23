@@ -2,8 +2,17 @@
 #include "psapi.h"
 #pragma comment(lib, "psapi.lib")
 
+#include <vector>
 #include <string>
 #include <cstdio>
+
+struct WindowAlignment
+{
+	int left;
+	int right;
+	int top;
+	int bottom;
+};
 
 std::string getLastErrorAsString()
 {
@@ -34,15 +43,6 @@ std::string getProcessName(HWND hWnd)
 	if (hProc != nullptr)
 	{
 		GetModuleBaseNameA(hProc, nullptr, buffer, MAX_PATH);
-
-// 		HMODULE hModule = nullptr;
-// 		DWORD needed = 0;
-// 
-// 		if (EnumProcessModules(hProc, &hModule, sizeof(hModule), &needed))
-// 		{
-// 			GetModuleBaseNameA(hProc, nullptr, buffer, MAX_PATH);
-// 		}
-
 		CloseHandle(hProc);
 	}
 	else
@@ -53,23 +53,31 @@ std::string getProcessName(HWND hWnd)
 	return std::string(buffer);
 }
 
-void resizeWindow(HWND windowToSave, int windowWidth)
+void resizeWindow(HWND window, HMONITOR monitor, WindowAlignment alignment)
 {
-	if (windowToSave == nullptr)
+	if (window == nullptr)
+		return;
+
+	// Get a default monitor
+	if (monitor == nullptr)
+		monitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
+
+	if (monitor == nullptr)
 		return;
 
 	MONITORINFO monitorInfo;
 	monitorInfo.cbSize = sizeof(MONITORINFO);
-
-	HMONITOR monitor = MonitorFromWindow(windowToSave, MONITOR_DEFAULTTOPRIMARY);
 	if (GetMonitorInfoA(monitor, &monitorInfo))
 	{
-// 		int windowWidth = 1120;
-		int windowHeight = monitorInfo.rcWork.bottom;
-		int windowX = monitorInfo.rcWork.right - windowWidth;
-		int windowY = 0;
+		int screenWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+		int screenHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
 
-		SetWindowPos(windowToSave, nullptr, windowX, windowY, windowWidth, windowHeight, SWP_NOZORDER | SWP_NOOWNERZORDER);
+		int windowX = int((alignment.left / 100.f) * screenWidth) + monitorInfo.rcWork.left;
+		int windowY = int((alignment.top / 100.f) * screenHeight) + monitorInfo.rcWork.top;
+		int windowWidth = int(((alignment.right - alignment.left) / 100.f) * screenWidth + 0.5f);
+		int windowHeight = int(((alignment.bottom - alignment.top) / 100.f) * screenHeight + 0.5f);
+
+		SetWindowPos(window, nullptr, windowX, windowY, windowWidth, windowHeight, SWP_NOZORDER | SWP_NOOWNERZORDER);
 	}
 }
 
@@ -107,11 +115,100 @@ HWND findWindowFromProcessName(const std::string &processName)
 	return nullptr;
 }
 
-int main()
+BOOL CALLBACK monitorEnumProc(HMONITOR monitor, HDC dc, LPRECT rekt, LPARAM userdata)
 {
-	std::string processToSave = "Spotify.exe";
-	HWND windowToSave = findWindowFromProcessName(processToSave);
-	resizeWindow(windowToSave, 1120);
+	std::vector<HMONITOR> &monitors = *(std::vector<HMONITOR>*)userdata;
+	monitors.push_back(monitor);
+	return true;
+}
+
+void printUsageInstructions()
+{
+	printf("Usage: WindowPosition.exe <process name> <monitor index> <left offset> <right offset> <top offset> <bottom offet>\n\n");
+	
+	printf("  Process name is the executable file name running on the computer.\n\n");
+	
+	printf("  Monitor index declares which monitor the window will be placed on.\n");
+	printf("  The value should be 1 or higher and not exceed the number of monitors connected.\n\n");
+
+	printf("  Offsets are described in absolute percentages between [0-100].\n");
+	printf("  For example setting left to 50 and right to 100 aligns\n");
+	printf("  a window on the right side half portion of the screen.\n\n");
+	printf("\n");
+}
+
+int main(int argc, char *argv[])
+{
+	if (argc < 7)
+	{
+		printUsageInstructions();
+		return 0;
+	}
+
+	std::string processName = argv[1];
+	HWND window = findWindowFromProcessName(processName);
+	if (window == nullptr)
+	{
+		printf("Error: a window for specified process name couldn't be found.\n\n");
+		printUsageInstructions();
+		return 1;
+	}
+
+	size_t monitorIndex = std::atoi(argv[2]);
+	if (monitorIndex == 0)
+	{
+		printf("Error: Invalid monitor index.\n\n");
+		printUsageInstructions();
+		return 4;
+	}
+	monitorIndex = monitorIndex - 1;
+
+	std::vector<HMONITOR> monitors;
+	if (EnumDisplayMonitors(nullptr, nullptr, &monitorEnumProc, (LPARAM)&monitors) == 0)
+	{
+		printf("Error: EnumDisplayMonitors failed.\n\n");
+		printUsageInstructions();
+		return 2;
+	}
+
+	if (monitors.empty())
+	{
+		printf("Error: Could not retrieve any monitors.\n\n");
+		printUsageInstructions();
+		return 3;
+	}
+
+	if (monitorIndex >= monitors.size())
+	{
+		printf("Error: Monitor index exceeds the number of available monitors.\n\n");
+		printUsageInstructions();
+		return 4;
+	}
+
+	WindowAlignment wa;
+	wa.left   = std::atoi(argv[3]);
+	wa.right  = std::atoi(argv[4]);
+	wa.top    = std::atoi(argv[5]);
+	wa.bottom = std::atoi(argv[6]);
+
+	if ((wa.left < 0   || wa.left > 100)  ||
+		(wa.right < 0  || wa.right > 100) ||
+		(wa.top < 0    || wa.top > 100)   ||
+		(wa.bottom < 0 || wa.bottom > 100))
+	{
+		printf("Error: Position offsets exceed the percentage value range [0-100].\n\n");
+		printUsageInstructions();
+		return 5;
+	}
+
+	if ((wa.left >= wa.right) || (wa.top >= wa.bottom))
+	{
+		printf("Error: Position offsets leave no window area.\n\n");
+		printUsageInstructions();
+		return 5;
+	}
+
+	resizeWindow(window, monitors[monitorIndex], wa);
 
 	return 0;
 }
