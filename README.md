@@ -1,5 +1,5 @@
 # WindowPosition
-It positions and resizes window. Because ~~Spotify~~ some programs is too f\*ken stupid to do it by themselves.
+It positions and resizes window. Because ~~Spotify~~ some programs are too f\*ken stupid to do it by themselves.
 
 ## Usage
 WindowPosition.exe `<process name> <monitor index> <left offset> <right offset> <top offset> <bottom offet>`
