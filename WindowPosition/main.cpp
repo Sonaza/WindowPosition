@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <cstdio>
+#include <inttypes.h>
 
 struct WindowAlignment
 {
@@ -13,6 +14,8 @@ struct WindowAlignment
 	int top;
 	int bottom;
 };
+
+std::string lastProgramErrorString = "";
 
 std::string getLastErrorAsString()
 {
@@ -53,6 +56,15 @@ std::string getProcessName(HWND hWnd)
 	return std::string(buffer);
 }
 
+bool iequals(const std::string& a, const std::string& b)
+{
+	return std::equal(a.begin(), a.end(),
+		b.begin(), b.end(),
+		[](char a, char b) {
+		return tolower(a) == tolower(b);
+	});
+}
+
 void resizeWindow(HWND window, HMONITOR monitor, WindowAlignment alignment)
 {
 	if (window == nullptr)
@@ -88,7 +100,7 @@ HWND findWindowFromProcessName(const std::string &processName)
 
 	if (currentWindow == nullptr)
 	{
-		printf("Window is null");
+		lastProgramErrorString = "Top window is null.";
 		return nullptr;
 	}
 
@@ -99,9 +111,14 @@ HWND findWindowFromProcessName(const std::string &processName)
 			char buffer[1024] = { 0 };
 			if (GetWindowTextA(currentWindow, buffer, 1024) > 0)
 			{
-				if (getProcessName(currentWindow) == processName)
+
+				const std::string currentProcessName = getProcessName(currentWindow);
+// 				printf("WindowText: %s\n", buffer);
+// 				printf("%s\n\n-------------\n", currentProcessName.c_str());
+
+				if (iequals(currentProcessName, processName))
 				{
-					printf("0x%04X : %s\n", (ptrdiff_t)currentWindow, buffer);
+					printf("0x%04" PRIX64 " : %s\n", (ptrdiff_t)currentWindow, buffer);
 					printf("   %s\n", processName.c_str());
 
 					return currentWindow;
@@ -112,6 +129,7 @@ HWND findWindowFromProcessName(const std::string &processName)
 		currentWindow = GetNextWindow(currentWindow, GW_HWNDNEXT);
 	} while (currentWindow != nullptr && currentWindow != topWindow);
 
+	lastProgramErrorString = "Window process with module name " + processName + " not found.";
 	return nullptr;
 }
 
@@ -137,6 +155,20 @@ void printUsageInstructions()
 	printf("\n");
 }
 
+void printErrorString(const std::string &errorStr)
+{
+	printf("Error: %s\n", errorStr.c_str());
+
+	if (!lastProgramErrorString.empty())
+	{
+		printf("       %s\n\n", lastProgramErrorString.c_str());
+	}
+	else
+	{
+		printf("\n");
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 7)
@@ -149,7 +181,7 @@ int main(int argc, char *argv[])
 	HWND window = findWindowFromProcessName(processName);
 	if (window == nullptr)
 	{
-		printf("Error: a window for specified process name couldn't be found.\n\n");
+		printErrorString("A window for specified process name couldn't be found.");
 		printUsageInstructions();
 		return 1;
 	}
@@ -157,7 +189,7 @@ int main(int argc, char *argv[])
 	size_t monitorIndex = std::atoi(argv[2]);
 	if (monitorIndex == 0)
 	{
-		printf("Error: Invalid monitor index.\n\n");
+		printErrorString("Invalid monitor index.");
 		printUsageInstructions();
 		return 4;
 	}
@@ -166,21 +198,21 @@ int main(int argc, char *argv[])
 	std::vector<HMONITOR> monitors;
 	if (EnumDisplayMonitors(nullptr, nullptr, &monitorEnumProc, (LPARAM)&monitors) == 0)
 	{
-		printf("Error: EnumDisplayMonitors failed.\n\n");
+		printErrorString("EnumDisplayMonitors failed.");
 		printUsageInstructions();
 		return 2;
 	}
 
 	if (monitors.empty())
 	{
-		printf("Error: Could not retrieve any monitors.\n\n");
+		printErrorString("Could not retrieve any monitors.");
 		printUsageInstructions();
 		return 3;
 	}
 
 	if (monitorIndex >= monitors.size())
 	{
-		printf("Error: Monitor index exceeds the number of available monitors.\n\n");
+		printErrorString("Monitor index exceeds the number of available monitors.");
 		printUsageInstructions();
 		return 4;
 	}
@@ -196,14 +228,14 @@ int main(int argc, char *argv[])
 		(wa.top < 0    || wa.top > 100)   ||
 		(wa.bottom < 0 || wa.bottom > 100))
 	{
-		printf("Error: Position offsets exceed the percentage value range [0-100].\n\n");
+		printErrorString("Position offsets exceed the percentage value range [0-100].");
 		printUsageInstructions();
 		return 5;
 	}
 
 	if ((wa.left >= wa.right) || (wa.top >= wa.bottom))
 	{
-		printf("Error: Position offsets leave no window area.\n\n");
+		printErrorString("Position offsets leave no window area.");
 		printUsageInstructions();
 		return 5;
 	}
