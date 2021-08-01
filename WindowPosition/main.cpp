@@ -6,13 +6,14 @@
 #include <string>
 #include <cstdio>
 #include <inttypes.h>
+#include <sstream>
 
 struct WindowAlignment
 {
-	int left;
-	int right;
-	int top;
-	int bottom;
+	double left;
+	double right;
+	double top;
+	double bottom;
 };
 
 std::string lastProgramErrorString = "";
@@ -50,7 +51,7 @@ std::string getProcessName(HWND hWnd)
 	}
 	else
 	{
-		printf("Failed to handle\n");
+		printf("Failed to get handle\n");
 	}
 
 	return std::string(buffer);
@@ -84,12 +85,18 @@ void resizeWindow(HWND window, HMONITOR monitor, WindowAlignment alignment)
 		int screenWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
 		int screenHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
 
-		int windowX = int((alignment.left / 100.f) * screenWidth) + monitorInfo.rcWork.left;
-		int windowY = int((alignment.top / 100.f) * screenHeight) + monitorInfo.rcWork.top;
-		int windowWidth = int(((alignment.right - alignment.left) / 100.f) * screenWidth + 0.5f);
-		int windowHeight = int(((alignment.bottom - alignment.top) / 100.f) * screenHeight + 0.5f);
+		int windowX = int((alignment.left / 100.0) * screenWidth) + monitorInfo.rcWork.left;
+		int windowY = int((alignment.top / 100.0) * screenHeight) + monitorInfo.rcWork.top;
+		int windowWidth = int(((alignment.right - alignment.left) / 100.0) * screenWidth + 0.5);
+		int windowHeight = int(((alignment.bottom - alignment.top) / 100.0) * screenHeight + 0.5);
+
+		printf("New pos, size: %d %d, %d %d\n", windowX, windowY, windowWidth, windowHeight);
 
 		SetWindowPos(window, nullptr, windowX, windowY, windowWidth, windowHeight, SWP_NOZORDER | SWP_NOOWNERZORDER);
+	}
+	else
+	{
+		printf("Failed to retrieve monitor data.\n");
 	}
 }
 
@@ -218,15 +225,17 @@ int main(int argc, char *argv[])
 	}
 
 	WindowAlignment wa;
-	wa.left   = std::atoi(argv[3]);
-	wa.right  = std::atoi(argv[4]);
-	wa.top    = std::atoi(argv[5]);
-	wa.bottom = std::atoi(argv[6]);
+	wa.left   = std::atof(argv[3]);
+	wa.right  = std::atof(argv[4]);
+	wa.top    = std::atof(argv[5]);
+	wa.bottom = std::atof(argv[6]);
 
-	if ((wa.left < 0   || wa.left > 100)  ||
-		(wa.right < 0  || wa.right > 100) ||
-		(wa.top < 0    || wa.top > 100)   ||
-		(wa.bottom < 0 || wa.bottom > 100))
+	printf("%0.3f %0.3f %0.3f %0.3f\n", wa.left, wa.right, wa.top, wa.bottom);
+
+	if ((wa.left   < 0.0 || wa.left   > 100.0) ||
+		(wa.right  < 0.0 || wa.right  > 100.0) ||
+		(wa.top    < 0.0 || wa.top    > 100.0) ||
+		(wa.bottom < 0.0 || wa.bottom > 100.0))
 	{
 		printErrorString("Position offsets exceed the percentage value range [0-100].");
 		printUsageInstructions();
