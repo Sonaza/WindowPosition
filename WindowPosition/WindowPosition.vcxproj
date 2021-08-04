@@ -116,9 +116,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="includewindows.h" />
+    <ClInclude Include="log.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>

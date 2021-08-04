@@ -1,6 +1,5 @@
-#include "Windows.h"
-#include "psapi.h"
-#pragma comment(lib, "psapi.lib")
+#include "includewindows.h"
+#include "log.h"
 
 #include <vector>
 #include <string>
@@ -51,13 +50,13 @@ std::string getProcessName(HWND hWnd)
 	}
 	else
 	{
-		printf("Failed to get handle\n");
+		dprintf("Failed to get handle\n");
 	}
 
 	return std::string(buffer);
 }
 
-bool iequals(const std::string& a, const std::string& b)
+bool iequals(const std::string &a, const std::string &b)
 {
 	return std::equal(a.begin(), a.end(),
 		b.begin(), b.end(),
@@ -90,51 +89,79 @@ void resizeWindow(HWND window, HMONITOR monitor, WindowAlignment alignment)
 		int windowWidth = int(((alignment.right - alignment.left) / 100.0) * screenWidth + 0.5);
 		int windowHeight = int(((alignment.bottom - alignment.top) / 100.0) * screenHeight + 0.5);
 
-		printf("New pos, size: %d %d, %d %d\n", windowX, windowY, windowWidth, windowHeight);
+		dprintf("New pos/size: (%d, %d) (%d, %d)\n", windowX, windowY, windowWidth, windowHeight);
 
 		SetWindowPos(window, nullptr, windowX, windowY, windowWidth, windowHeight, SWP_NOZORDER | SWP_NOOWNERZORDER);
 	}
 	else
 	{
-		printf("Failed to retrieve monitor data.\n");
+		dprintf("Failed to retrieve monitor data.\n");
 	}
 }
 
-HWND findWindowFromProcessName(const std::string &processName)
+struct EnumWindowData
 {
-	HWND topWindow = GetTopWindow(nullptr);
-	HWND currentWindow = topWindow;
+	std::string processName;
+	std::string windowTitle;
+	std::string className;
 
-	if (currentWindow == nullptr)
+	HWND resultHwnd;
+};
+
+BOOL CALLBACK enumWindowCallback(HWND hwnd, LPARAM lParam)
+{
+	EnumWindowData &data = *(EnumWindowData*)lParam;
+
+	if (!IsWindowVisible(hwnd))
+		return true;
+
+	const std::string currentProcessName = getProcessName(hwnd);
+
+	dprintf("\n0x%08" PRIX64 " : %s\n", (ptrdiff_t)hwnd, currentProcessName.c_str());
+
+	if (!iequals(currentProcessName, data.processName))
+		return true;
+
+	char titleBuffer[1024] = {};
+	if (GetWindowTextA(hwnd, titleBuffer, 1024) == 0)
+		return true;
+
+	dprintf("  Title    : %s\n", titleBuffer);
+
+	if (!data.windowTitle.empty())
 	{
-		lastProgramErrorString = "Top window is null.";
-		return nullptr;
+		if (!iequals(titleBuffer, data.windowTitle))
+			return true;
 	}
 
-	do
+	if (!data.className.empty())
 	{
-		if (IsWindowVisible(currentWindow))
-		{
-			char buffer[1024] = { 0 };
-			if (GetWindowTextA(currentWindow, buffer, 1024) > 0)
-			{
+		char classBuffer[1024] = {};
+		if (GetClassNameA(hwnd, classBuffer, 1024) == 0)
+			return true;
 
-				const std::string currentProcessName = getProcessName(currentWindow);
-// 				printf("WindowText: %s\n", buffer);
-// 				printf("%s\n\n-------------\n", currentProcessName.c_str());
+		dprintf("  Class    : %s\n", classBuffer);
 
-				if (iequals(currentProcessName, processName))
-				{
-					printf("0x%04" PRIX64 " : %s\n", (ptrdiff_t)currentWindow, buffer);
-					printf("   %s\n", processName.c_str());
+		if (!iequals(classBuffer, data.className))
+			return true;
+	}
 
-					return currentWindow;
-				}
-			}
-		}
+	dprintf("  FOUND THINGALING!\n");
+	data.resultHwnd = hwnd;
 
-		currentWindow = GetNextWindow(currentWindow, GW_HWNDNEXT);
-	} while (currentWindow != nullptr && currentWindow != topWindow);
+	return false; // false halts the EnumWindows
+}
+
+HWND findWindow(const std::string &processName, const std::string &windowTitle, const std::string &className)
+{
+	EnumWindowData data = {};
+	data.processName = processName;
+	data.windowTitle = windowTitle;
+	data.className = className;
+	EnumWindows(enumWindowCallback, (LPARAM)&data);
+	
+	if (data.resultHwnd != nullptr)
+		return data.resultHwnd;
 
 	lastProgramErrorString = "Window process with module name " + processName + " not found.";
 	return nullptr;
@@ -149,43 +176,67 @@ BOOL CALLBACK monitorEnumProc(HMONITOR monitor, HDC dc, LPRECT rekt, LPARAM user
 
 void printUsageInstructions()
 {
-	printf("Usage: WindowPosition.exe <process name> <monitor index> <left offset> <right offset> <top offset> <bottom offet>\n\n");
+	dprintf("Usage: WindowPosition.exe <monitor index> <left offset> <right offset> <top offset> <bottom offet> <process name> [window title] [window class]\n\n");
 	
-	printf("  Process name is the executable file name running on the computer.\n\n");
-	
-	printf("  Monitor index declares which monitor the window will be placed on.\n");
-	printf("  The value should be 1 or higher and not exceed the number of monitors connected.\n\n");
+	dprintf("  Monitor index declares which monitor the window will be placed on.\n");
+	dprintf("  The value should be 1 or higher and not exceed the number of monitors connected.\n\n");
 
-	printf("  Offsets are described in absolute percentages between [0-100].\n");
-	printf("  For example setting left to 50 and right to 100 aligns\n");
-	printf("  a window on the right side half portion of the screen.\n\n");
-	printf("\n");
+	dprintf("  Offsets are described in absolute percentages between [0-100].\n");
+	dprintf("  For example setting left to 50 and right to 100 aligns\n");
+	dprintf("  a window on the right side half portion of the screen.\n");
+	dprintf("  Floating point values are also allowed for more fine tuned control.\n\n");
+
+	dprintf("  The process name is the executable file name running on the computer.\n");
+	dprintf("  Optionally a window title and a window class can be specified to focus the search.\n\n");
+
+	dprintf("\n");
 }
 
 void printErrorString(const std::string &errorStr)
 {
-	printf("Error: %s\n", errorStr.c_str());
+	dprintf("Error: %s\n", errorStr.c_str());
 
 	if (!lastProgramErrorString.empty())
 	{
-		printf("       %s\n\n", lastProgramErrorString.c_str());
+		dprintf("       %s\n\n", lastProgramErrorString.c_str());
 	}
 	else
 	{
-		printf("\n");
+		dprintf("\n");
 	}
+}
+
+double todouble(const char *s)
+{
+	std::stringstream ss;
+	double out;
+	ss << s;
+	ss >> out;
+	return out;
 }
 
 int main(int argc, char *argv[])
 {
-	if (argc < 7)
+	if (argc != 7 && argc != 8 && argc != 9)
 	{
 		printUsageInstructions();
 		return 0;
 	}
 
-	std::string processName = argv[1];
-	HWND window = findWindowFromProcessName(processName);
+	for (int i = 0; i < argc; i++)
+	{
+		dprintf("%d : %s\n", i, argv[i]);
+	}
+
+	std::string processName = argv[6];
+	
+	std::string windowTitle;
+	if (argc >= 8) windowTitle = argv[7];
+
+	std::string className;
+	if (argc >= 9) className = argv[8];
+
+	HWND window = findWindow(processName, windowTitle, className);
 	if (window == nullptr)
 	{
 		printErrorString("A window for specified process name couldn't be found.");
@@ -193,7 +244,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	size_t monitorIndex = std::atoi(argv[2]);
+	size_t monitorIndex = std::atoi(argv[1]);
 	if (monitorIndex == 0)
 	{
 		printErrorString("Invalid monitor index.");
@@ -225,12 +276,12 @@ int main(int argc, char *argv[])
 	}
 
 	WindowAlignment wa;
-	wa.left   = std::atof(argv[3]);
-	wa.right  = std::atof(argv[4]);
-	wa.top    = std::atof(argv[5]);
-	wa.bottom = std::atof(argv[6]);
+	wa.left   = todouble(argv[2]);
+	wa.right  = todouble(argv[3]);
+	wa.top    = todouble(argv[4]);
+	wa.bottom = todouble(argv[5]);
 
-	printf("%0.3f %0.3f %0.3f %0.3f\n", wa.left, wa.right, wa.top, wa.bottom);
+	dprintf("WTF %0.3f %0.3f %0.3f %0.3f\n", wa.left, wa.right, wa.top, wa.bottom);
 
 	if ((wa.left   < 0.0 || wa.left   > 100.0) ||
 		(wa.right  < 0.0 || wa.right  > 100.0) ||
